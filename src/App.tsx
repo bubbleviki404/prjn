@@ -583,7 +583,8 @@ export default function App() {
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              className="w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+              className="max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+              style={{ width: 'min(96vw, 1120px)' }}
             >
               <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
                 <div>
@@ -696,13 +697,14 @@ export default function App() {
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              className="w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+              className="max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+              style={{ width: 'min(96vw, 1120px)' }}
             >
               <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-sm font-black uppercase tracking-widest">快速新增 PRJN / Quick Add</h2>
                   <p className="text-[11px] text-gray-400 mt-1">
-                    粘贴结构化文本，先识别成预览卡片，确认后再添加到历史记录。
+                    先粘贴并识别，再在下方草稿里像普通新增一样编辑，确认后写入历史记录。
                   </p>
                 </div>
                 <button
@@ -718,13 +720,13 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-5">
+              <div className="p-6 space-y-5">
                 <div className="space-y-3">
                   <textarea
                     value={quickAddText}
                     onChange={(e) => setQuickAddText(e.target.value)}
                     placeholder={'Category: tool\nP: 我原本以为...\nR: 实际发生...\nJ: 我现在判断...\nN: 下一步...\nNote: 补充说明...'}
-                    className="w-full h-72 resize-none bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm leading-relaxed outline-none focus:border-black transition-colors"
+                    className="w-full h-44 resize-none bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm leading-relaxed outline-none focus:border-black transition-colors"
                   />
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex gap-2">
@@ -762,15 +764,15 @@ export default function App() {
                     <div className="space-y-4">
                       <div>
                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">分类 / Category</label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                           {CATEGORIES.map((cat) => (
                             <button
                               key={cat}
                               type="button"
                               onClick={() => handleQuickAddDraftChange('category', cat)}
                               className={cn(
-                                "category-btn-minimal bg-white",
-                                quickAddDraft.category === cat && "category-btn-minimal-active"
+                                "category-btn-minimal",
+                                quickAddDraft.category === cat ? "category-btn-minimal-active" : "bg-white"
                               )}
                             >
                               <span className="block text-[9px] font-bold opacity-60">{cat.toUpperCase()}</span>
@@ -780,39 +782,41 @@ export default function App() {
                         </div>
                       </div>
 
-                      <EditField label="P / Predict" color="text-blue-500">
-                        <textarea
-                          value={quickAddDraft.predict}
-                          onChange={(e) => handleQuickAddDraftChange('predict', e.target.value)}
-                          className="prjn-edit-input h-20 bg-white"
-                        />
-                      </EditField>
-                      <EditField label="R / Reality" color="text-orange-500">
-                        <textarea
-                          value={quickAddDraft.reality}
-                          onChange={(e) => handleQuickAddDraftChange('reality', e.target.value)}
-                          className="prjn-edit-input h-20 bg-white"
-                        />
-                      </EditField>
-                      <EditField label="J / Judgment" color="text-purple-500">
-                        <textarea
-                          value={quickAddDraft.judgment}
-                          onChange={(e) => handleQuickAddDraftChange('judgment', e.target.value)}
-                          className="prjn-edit-input h-20 bg-white"
-                        />
-                      </EditField>
-                      <EditField label="N / Next" color="text-green-500">
-                        <textarea
-                          value={quickAddDraft.next}
-                          onChange={(e) => handleQuickAddDraftChange('next', e.target.value)}
-                          className="prjn-edit-input h-20 bg-white"
-                        />
-                      </EditField>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <EditField label="P / Predict" color="text-blue-500">
+                          <textarea
+                            value={quickAddDraft.predict}
+                            onChange={(e) => handleQuickAddDraftChange('predict', e.target.value)}
+                            className="prjn-edit-input h-24 bg-white"
+                          />
+                        </EditField>
+                        <EditField label="R / Reality" color="text-orange-500">
+                          <textarea
+                            value={quickAddDraft.reality}
+                            onChange={(e) => handleQuickAddDraftChange('reality', e.target.value)}
+                            className="prjn-edit-input h-24 bg-white"
+                          />
+                        </EditField>
+                        <EditField label="J / Judgment" color="text-purple-500">
+                          <textarea
+                            value={quickAddDraft.judgment}
+                            onChange={(e) => handleQuickAddDraftChange('judgment', e.target.value)}
+                            className="prjn-edit-input h-24 bg-white"
+                          />
+                        </EditField>
+                        <EditField label="N / Next" color="text-green-500">
+                          <textarea
+                            value={quickAddDraft.next}
+                            onChange={(e) => handleQuickAddDraftChange('next', e.target.value)}
+                            className="prjn-edit-input h-24 bg-white"
+                          />
+                        </EditField>
+                      </div>
                       <EditField label="Note / 备注" color="text-gray-400">
                         <textarea
                           value={quickAddDraft.note ?? ''}
                           onChange={(e) => handleQuickAddDraftChange('note', e.target.value)}
-                          className="prjn-edit-input h-16 bg-white"
+                          className="prjn-edit-input h-20 bg-white"
                         />
                       </EditField>
                     </div>
