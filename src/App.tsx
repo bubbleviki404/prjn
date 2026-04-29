@@ -139,7 +139,8 @@ export default function App() {
   const [quickAddMessage, setQuickAddMessage] = useState('');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
-  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingEntry, setEditingEntry] = useState<(PRJNDraft & { id: string }) | null>(null);
+  const [leftPaneWidth, setLeftPaneWidth] = useState(400);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +158,6 @@ export default function App() {
     setNext('');
     setNote('');
     setIsNoteOpen(false);
-    setEditingEntryId(null);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -169,29 +169,18 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      if (editingEntryId) {
-        await db.entries.update(editingEntryId, {
-          category,
-          predict,
-          reality,
-          judgment,
-          next,
-          note: note.trim() || undefined,
-        });
-      } else {
-        const newEntry: PRJNEntry = {
-          id: nanoid(),
-          category,
-          predict,
-          reality,
-          judgment,
-          next,
-          note: note.trim() || undefined,
-          createdAt: Date.now(),
-        };
+      const newEntry: PRJNEntry = {
+        id: nanoid(),
+        category,
+        predict,
+        reality,
+        judgment,
+        next,
+        note: note.trim() || undefined,
+        createdAt: Date.now(),
+      };
 
-        await db.entries.add(newEntry);
-      }
+      await db.entries.add(newEntry);
 
       resetForm();
     } catch (error) {
@@ -209,8 +198,8 @@ export default function App() {
     
     try {
       await db.entries.delete(id);
-      if (editingEntryId === id) {
-        resetForm();
+      if (editingEntry?.id === id) {
+        setEditingEntry(null);
       }
     } catch (error) {
       console.error('Delete failed:', error);
@@ -270,19 +259,69 @@ export default function App() {
   };
 
   const handleEdit = (entry: PRJNEntry) => {
-    setCategory(entry.category);
-    setPredict(entry.predict);
-    setReality(entry.reality);
-    setJudgment(entry.judgment);
-    setNext(entry.next);
-    setNote(entry.note ?? '');
-    setIsNoteOpen(Boolean(entry.note));
-    setEditingEntryId(entry.id);
+    setEditingEntry({
+      id: entry.id,
+      category: entry.category,
+      predict: entry.predict,
+      reality: entry.reality,
+      judgment: entry.judgment,
+      next: entry.next,
+      note: entry.note,
+    });
     setIsQuickAddOpen(false);
   };
 
-  const handleCancelEdit = () => {
-    resetForm();
+  const handleEditFieldChange = (field: keyof PRJNDraft, value: string | PRJNCategory) => {
+    setEditingEntry((current) => current ? { ...current, [field]: value } : current);
+  };
+
+  const handleUpdateEntry = async () => {
+    if (!editingEntry) return;
+    if (!editingEntry.predict || !editingEntry.reality || !editingEntry.judgment || !editingEntry.next) {
+      alert('请填写完整的 PRJN 信息');
+      return;
+    }
+
+    try {
+      await db.entries.update(editingEntry.id, {
+        category: editingEntry.category,
+        predict: editingEntry.predict,
+        reality: editingEntry.reality,
+        judgment: editingEntry.judgment,
+        next: editingEntry.next,
+        note: editingEntry.note?.trim() || undefined,
+      });
+      setEditingEntry(null);
+    } catch (error) {
+      console.error('Update failed:', error);
+      alert('更新失败，请重试');
+    }
+  };
+
+  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const container = event.currentTarget.parentElement;
+    if (!container) return;
+
+    const bounds = container.getBoundingClientRect();
+    const minWidth = 320;
+    const maxWidth = Math.max(minWidth, bounds.width - 420);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.min(Math.max(moveEvent.clientX - bounds.left, minWidth), maxWidth);
+      setLeftPaneWidth(nextWidth);
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   };
 
   const handleExport = () => {
@@ -382,7 +421,10 @@ export default function App() {
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Pane: Input Form */}
-        <section className="w-full md:w-[400px] border-r border-gray-200 bg-white p-8 flex flex-col overflow-y-auto custom-scrollbar">
+        <section
+          className="w-full md:w-[var(--left-pane-width)] md:min-w-[320px] md:max-w-[70vw] border-b md:border-b-0 border-gray-200 bg-white p-8 flex flex-col overflow-y-auto custom-scrollbar"
+          style={{ '--left-pane-width': `${leftPaneWidth}px` } as React.CSSProperties}
+        >
           <div className="mb-8">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 block">1. 分类 / Select Category</label>
             <div className="grid grid-cols-3 gap-2">
@@ -470,29 +512,24 @@ export default function App() {
               </div>
             </div>
 
-            {editingEntryId && (
-              <div className="rounded-lg border border-black bg-gray-50 p-3 text-[10px] font-bold text-gray-500 uppercase tracking-tighter flex items-center justify-between">
-                <span>正在编辑历史记录 / Editing entry</span>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="p-1 rounded hover:bg-white transition-colors"
-                  title="取消编辑 / Cancel edit"
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={isSaving}
               className="w-full mt-auto bg-black text-white py-4 rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isSaving ? '正在保存 / SAVING...' : editingEntryId ? '保存修改 / SAVE CHANGES' : '保存复盘 / SAVE ENTRY'}
+              {isSaving ? '正在保存 / SAVING...' : '保存复盘 / SAVE ENTRY'}
             </button>
           </form>
         </section>
+
+        <div
+          role="separator"
+          aria-label="调整输入区和历史区宽度 / Resize panes"
+          className="hidden md:flex w-2 cursor-col-resize items-center justify-center bg-white border-x border-gray-200 hover:bg-gray-100 active:bg-gray-200 transition-colors group"
+          onPointerDown={handleResizeStart}
+        >
+          <div className="h-10 w-0.5 rounded-full bg-gray-200 group-hover:bg-gray-400 transition-colors" />
+        </div>
 
         {/* Right Pane: History */}
         <section className="flex-1 bg-gray-50 p-8 flex flex-col overflow-hidden">
@@ -512,7 +549,7 @@ export default function App() {
                   onEdit={handleEdit}
                   onDelete={handleDelete} 
                   isDeleting={deletingIds.has(entry.id)} 
-                  isEditing={editingEntryId === entry.id}
+                  isEditing={editingEntry?.id === entry.id}
                 />
               ))}
             </AnimatePresence>
@@ -529,6 +566,119 @@ export default function App() {
           </div>
         </section>
       </main>
+
+      <AnimatePresence>
+        {editingEntry && (
+          <motion.div
+            className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              className="w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+            >
+              <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-widest">编辑 PRJN / Edit Entry</h2>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    修改后点击更新才会写回历史记录。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingEntry(null)}
+                  className="p-2 rounded-md text-gray-400 hover:bg-gray-100 hover:text-black transition-colors"
+                  title="关闭 / Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 block">分类 / Category</label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => handleEditFieldChange('category', cat)}
+                        className={cn(
+                          "category-btn-minimal",
+                          editingEntry.category === cat && "category-btn-minimal-active"
+                        )}
+                      >
+                        <span className="block text-[9px] font-bold opacity-60">{cat.toUpperCase()}</span>
+                        <span className="block mt-0.5">{CATEGORY_MAP[cat]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EditField label="P / Predict" color="text-blue-500">
+                    <textarea
+                      value={editingEntry.predict}
+                      onChange={(e) => handleEditFieldChange('predict', e.target.value)}
+                      className="prjn-edit-input"
+                    />
+                  </EditField>
+                  <EditField label="R / Reality" color="text-orange-500">
+                    <textarea
+                      value={editingEntry.reality}
+                      onChange={(e) => handleEditFieldChange('reality', e.target.value)}
+                      className="prjn-edit-input"
+                    />
+                  </EditField>
+                  <EditField label="J / Judgment" color="text-purple-500">
+                    <textarea
+                      value={editingEntry.judgment}
+                      onChange={(e) => handleEditFieldChange('judgment', e.target.value)}
+                      className="prjn-edit-input"
+                    />
+                  </EditField>
+                  <EditField label="N / Next" color="text-green-500">
+                    <textarea
+                      value={editingEntry.next}
+                      onChange={(e) => handleEditFieldChange('next', e.target.value)}
+                      className="prjn-edit-input"
+                    />
+                  </EditField>
+                </div>
+
+                <EditField label="Note / 备注" color="text-gray-400">
+                  <textarea
+                    value={editingEntry.note ?? ''}
+                    onChange={(e) => handleEditFieldChange('note', e.target.value)}
+                    className="prjn-edit-input h-20"
+                  />
+                </EditField>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingEntry(null)}
+                  className="px-4 py-2 border border-gray-200 rounded-md text-[11px] font-black uppercase tracking-tighter text-gray-500 hover:bg-gray-50 transition-colors"
+                >
+                  取消 / CANCEL
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpdateEntry}
+                  className="px-4 py-2 bg-black text-white rounded-md text-[11px] font-black uppercase tracking-tighter hover:opacity-90 transition-colors"
+                >
+                  更新 / UPDATE
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isQuickAddOpen && (
@@ -666,6 +816,15 @@ function MinimalField({ char, color, focusBorder, children }: { char: string; co
         className: cn(children.props.className, focusBorder)
       })}
     </div>
+  );
+}
+
+function EditField({ label, color, children }: { label: string; color: string; children: React.ReactElement }) {
+  return (
+    <label className="space-y-2 block">
+      <span className={cn("text-[10px] font-black uppercase tracking-widest", color)}>{label}</span>
+      {children}
+    </label>
   );
 }
 
