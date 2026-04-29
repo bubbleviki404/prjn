@@ -34,6 +34,49 @@ const CATEGORY_MAP: Record<PRJNCategory, string> = {
   growth: '成长'
 };
 
+type ParsedPRJN = {
+  category?: string;
+  predict?: string;
+  reality?: string;
+  judgment?: string;
+  next?: string;
+  note?: string;
+};
+
+const FIELD_MAP: Record<string, keyof ParsedPRJN> = {
+  category: 'category',
+  p: 'predict',
+  r: 'reality',
+  j: 'judgment',
+  n: 'next',
+  note: 'note'
+};
+
+function isPRJNCategory(value: string): value is PRJNCategory {
+  return CATEGORIES.includes(value as PRJNCategory);
+}
+
+function parsePRJNText(text: string): ParsedPRJN {
+  const parsed: ParsedPRJN = {};
+  let currentField: keyof ParsedPRJN | null = null;
+
+  text.split(/\r?\n/).forEach((line) => {
+    const match = line.match(/^\s*(Category|P|R|J|N|Note)\s*[:：]\s*(.*)$/i);
+
+    if (match) {
+      currentField = FIELD_MAP[match[1].toLowerCase()];
+      parsed[currentField] = match[2].trim();
+      return;
+    }
+
+    if (currentField && line.trim()) {
+      parsed[currentField] = [parsed[currentField], line.trim()].filter(Boolean).join('\n');
+    }
+  });
+
+  return parsed;
+}
+
 export default function App() {
   // Form State
   const [category, setCategory] = useState<PRJNCategory>('learning');
@@ -42,6 +85,9 @@ export default function App() {
   const [judgment, setJudgment] = useState('');
   const [next, setNext] = useState('');
   const [note, setNote] = useState('');
+  const [quickPasteText, setQuickPasteText] = useState('');
+  const [quickPasteMessage, setQuickPasteMessage] = useState('');
+  const [isQuickPasteOpen, setIsQuickPasteOpen] = useState(false);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
@@ -106,6 +152,36 @@ export default function App() {
     }
   };
 
+  const handleQuickPasteParse = () => {
+    const parsed = parsePRJNText(quickPasteText);
+    const recognizedFields = Object.values(parsed).filter((value) => value?.trim()).length;
+
+    setPredict(parsed.predict ?? '');
+    setReality(parsed.reality ?? '');
+    setJudgment(parsed.judgment ?? '');
+    setNext(parsed.next ?? '');
+    setNote(parsed.note ?? '');
+    setIsNoteOpen(Boolean(parsed.note?.trim()));
+
+    if (parsed.category) {
+      const normalizedCategory = parsed.category.trim().toLowerCase();
+
+      if (isPRJNCategory(normalizedCategory)) {
+        setCategory(normalizedCategory);
+        setQuickPasteMessage(recognizedFields > 0 ? '已解析到表单 / Parsed into form' : '未识别到可填入字段 / Nothing parsed');
+      } else {
+        setQuickPasteMessage(`已解析到表单，分类 "${parsed.category}" 不在当前范围内 / Category kept unchanged`);
+      }
+    } else {
+      setQuickPasteMessage(recognizedFields > 0 ? '已解析到表单 / Parsed into form' : '未识别到可填入字段 / Nothing parsed');
+    }
+  };
+
+  const handleQuickPasteClear = () => {
+    setQuickPasteText('');
+    setQuickPasteMessage('');
+  };
+
   const handleExport = () => {
     if (!history || history.length === 0) {
       alert('没有可导出的数据');
@@ -155,6 +231,61 @@ export default function App() {
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Pane: Input Form */}
         <section className="w-full md:w-[400px] border-r border-gray-200 bg-white p-8 flex flex-col overflow-y-auto custom-scrollbar">
+          <div className="mb-6 border border-gray-200 rounded-xl bg-gray-50/60 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setIsQuickPasteOpen(!isQuickPasteOpen)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-white transition-colors"
+            >
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                快速粘贴 PRJN / Quick Paste
+              </span>
+              {isQuickPasteOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            <AnimatePresence>
+              {isQuickPasteOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 space-y-3">
+                    <textarea
+                      value={quickPasteText}
+                      onChange={(e) => setQuickPasteText(e.target.value)}
+                      placeholder={'Category: tool\nP: 我原本以为...\nR: 实际发生...\nJ: 我现在判断...\nN: 下一步...\nNote: 补充说明...'}
+                      className="w-full h-36 resize-none bg-white border border-gray-200 rounded-lg p-3 text-xs leading-relaxed outline-none focus:border-black transition-colors"
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleQuickPasteParse}
+                          className="px-3 py-2 bg-black text-white rounded-md text-[10px] font-black uppercase tracking-tighter hover:opacity-90 active:scale-[0.98] transition-all"
+                        >
+                          解析并填入 / PARSE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleQuickPasteClear}
+                          className="px-3 py-2 border border-gray-200 rounded-md text-[10px] font-black uppercase tracking-tighter text-gray-500 hover:bg-white transition-colors"
+                        >
+                          清空 / CLEAR
+                        </button>
+                      </div>
+                      {quickPasteMessage && (
+                        <span className="text-[10px] font-bold text-gray-400 text-right leading-tight">
+                          {quickPasteMessage}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           <div className="mb-8">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 block">1. 分类 / Select Category</label>
             <div className="grid grid-cols-3 gap-2">
