@@ -258,6 +258,10 @@ export default function App() {
     }
   };
 
+  const handleQuickAddDraftChange = (field: keyof PRJNDraft, value: string | PRJNCategory) => {
+    setQuickAddDraft((current) => current ? { ...current, [field]: value } : current);
+  };
+
   const handleEdit = (entry: PRJNEntry) => {
     setEditingEntry({
       id: entry.id,
@@ -750,27 +754,67 @@ export default function App() {
                 <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      识别预览 / Preview
+                      识别草稿 / Editable Draft
                     </h3>
-                    {quickAddDraft && (
-                      <span className="px-2 py-1 bg-white text-gray-600 text-[10px] font-black rounded uppercase tracking-wider border border-gray-200">
-                        {quickAddDraft.category.toUpperCase()} {CATEGORY_MAP[quickAddDraft.category]}
-                      </span>
-                    )}
                   </div>
 
                   {quickAddDraft ? (
                     <div className="space-y-4">
-                      <HistorySection label="Predict ｜ 预期" color="text-blue-500" content={quickAddDraft.predict || '未识别'} />
-                      <HistorySection label="Reality ｜ 实际" color="text-orange-500" content={quickAddDraft.reality || '未识别'} />
-                      <HistorySection label="Judgment ｜ 判断" color="text-purple-500" content={quickAddDraft.judgment || '未识别'} />
-                      <HistorySection label="Next ｜ 行动" color="text-green-500" content={quickAddDraft.next || '未识别'} />
-                      {quickAddDraft.note && (
-                        <div className="pt-3 border-t border-gray-200 italic text-gray-500 text-[11px] leading-relaxed">
-                          <span className="not-italic font-bold mr-1 text-[9px] uppercase tracking-tighter text-gray-400">备注 / Note:</span>
-                          {quickAddDraft.note}
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">分类 / Category</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {CATEGORIES.map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => handleQuickAddDraftChange('category', cat)}
+                              className={cn(
+                                "category-btn-minimal bg-white",
+                                quickAddDraft.category === cat && "category-btn-minimal-active"
+                              )}
+                            >
+                              <span className="block text-[9px] font-bold opacity-60">{cat.toUpperCase()}</span>
+                              <span className="block mt-0.5">{CATEGORY_MAP[cat]}</span>
+                            </button>
+                          ))}
                         </div>
-                      )}
+                      </div>
+
+                      <EditField label="P / Predict" color="text-blue-500">
+                        <textarea
+                          value={quickAddDraft.predict}
+                          onChange={(e) => handleQuickAddDraftChange('predict', e.target.value)}
+                          className="prjn-edit-input h-20 bg-white"
+                        />
+                      </EditField>
+                      <EditField label="R / Reality" color="text-orange-500">
+                        <textarea
+                          value={quickAddDraft.reality}
+                          onChange={(e) => handleQuickAddDraftChange('reality', e.target.value)}
+                          className="prjn-edit-input h-20 bg-white"
+                        />
+                      </EditField>
+                      <EditField label="J / Judgment" color="text-purple-500">
+                        <textarea
+                          value={quickAddDraft.judgment}
+                          onChange={(e) => handleQuickAddDraftChange('judgment', e.target.value)}
+                          className="prjn-edit-input h-20 bg-white"
+                        />
+                      </EditField>
+                      <EditField label="N / Next" color="text-green-500">
+                        <textarea
+                          value={quickAddDraft.next}
+                          onChange={(e) => handleQuickAddDraftChange('next', e.target.value)}
+                          className="prjn-edit-input h-20 bg-white"
+                        />
+                      </EditField>
+                      <EditField label="Note / 备注" color="text-gray-400">
+                        <textarea
+                          value={quickAddDraft.note ?? ''}
+                          onChange={(e) => handleQuickAddDraftChange('note', e.target.value)}
+                          className="prjn-edit-input h-16 bg-white"
+                        />
+                      </EditField>
                     </div>
                   ) : (
                     <div className="h-72 flex items-center justify-center text-center text-gray-300 text-xs font-bold uppercase tracking-widest">
