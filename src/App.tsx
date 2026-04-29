@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { nanoid } from 'nanoid';
 import { format } from 'date-fns';
 import { 
   Plus, 
-  ChevronDown, 
-  ChevronUp, 
   Download, 
   ClipboardList,
   Pencil,
+  Upload,
   X,
   Trash2
 } from 'lucide-react';
@@ -41,6 +40,8 @@ type ParsedPRJN = {
   next?: string;
   note?: string;
 };
+
+type PRJNDraft = Omit<PRJNEntry, 'id' | 'createdAt'>;
 
 const FIELD_MAP: Record<string, keyof ParsedPRJN> = {
   category: 'category',
@@ -76,6 +77,55 @@ function parsePRJNText(text: string): ParsedPRJN {
   return parsed;
 }
 
+function draftFromParsed(parsed: ParsedPRJN, fallbackCategory: PRJNCategory): { draft: PRJNDraft; categoryMessage?: string } {
+  const normalizedCategory = parsed.category?.trim().toLowerCase();
+  const parsedCategory = normalizedCategory && isPRJNCategory(normalizedCategory) ? normalizedCategory : fallbackCategory;
+
+  return {
+    draft: {
+      category: parsedCategory,
+      predict: parsed.predict ?? '',
+      reality: parsed.reality ?? '',
+      judgment: parsed.judgment ?? '',
+      next: parsed.next ?? '',
+      note: parsed.note?.trim() || undefined,
+    },
+    categoryMessage: parsed.category && parsedCategory === fallbackCategory && normalizedCategory !== fallbackCategory
+      ? `分类 "${parsed.category}" 不在当前范围内，已使用 ${fallbackCategory}`
+      : undefined,
+  };
+}
+
+function isDraftReady(draft: PRJNDraft | null): draft is PRJNDraft {
+  return Boolean(draft?.predict && draft.reality && draft.judgment && draft.next);
+}
+
+function normalizeImportedEntry(entry: unknown): PRJNEntry | null {
+  if (!entry || typeof entry !== 'object') return null;
+
+  const source = entry as Partial<PRJNEntry>;
+
+  if (
+    typeof source.predict !== 'string' ||
+    typeof source.reality !== 'string' ||
+    typeof source.judgment !== 'string' ||
+    typeof source.next !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : nanoid(),
+    category: typeof source.category === 'string' && isPRJNCategory(source.category) ? source.category : 'learning',
+    predict: source.predict,
+    reality: source.reality,
+    judgment: source.judgment,
+    next: source.next,
+    note: typeof source.note === 'string' && source.note.trim() ? source.note : undefined,
+    createdAt: typeof source.createdAt === 'number' ? source.createdAt : Date.now(),
+  };
+}
+
 export default function App() {
   // Form State
   const [category, setCategory] = useState<PRJNCategory>('learning');
@@ -84,13 +134,15 @@ export default function App() {
   const [judgment, setJudgment] = useState('');
   const [next, setNext] = useState('');
   const [note, setNote] = useState('');
-  const [quickPasteText, setQuickPasteText] = useState('');
-  const [quickPasteMessage, setQuickPasteMessage] = useState('');
-  const [isQuickPasteOpen, setIsQuickPasteOpen] = useState(false);
+  const [quickAddText, setQuickAddText] = useState('');
+  const [quickAddDraft, setQuickAddDraft] = useState<PRJNDraft | null>(null);
+  const [quickAddMessage, setQuickAddMessage] = useState('');
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Data Fetching
   const history = useLiveQuery(
@@ -170,49 +222,51 @@ export default function App() {
     }
   };
 
-  const applyParsedPRJN = (collapseAfterParse = false) => {
-    if (!quickPasteText.trim()) return;
-
-    const parsed = parsePRJNText(quickPasteText);
-    const recognizedFields = Object.values(parsed).filter((value) => value?.trim()).length;
-
-    if (recognizedFields === 0) {
-      setQuickPasteMessage('未识别到可填入字段 / Nothing parsed');
+  const handleQuickAddParse = () => {
+    if (!quickAddText.trim()) {
+      setQuickAddDraft(null);
+      setQuickAddMessage('请先粘贴 PRJN 文本 / Paste PRJN text first');
       return;
     }
 
-    setPredict(parsed.predict ?? '');
-    setReality(parsed.reality ?? '');
-    setJudgment(parsed.judgment ?? '');
-    setNext(parsed.next ?? '');
-    setNote(parsed.note ?? '');
-    setIsNoteOpen(Boolean(parsed.note?.trim()));
+    const parsed = parsePRJNText(quickAddText);
+    const recognizedFields = Object.values(parsed).filter((value) => value?.trim()).length;
 
-    if (parsed.category) {
-      const normalizedCategory = parsed.category.trim().toLowerCase();
-
-      if (isPRJNCategory(normalizedCategory)) {
-        setCategory(normalizedCategory);
-        setQuickPasteMessage('已解析到表单 / Parsed into form');
-      } else {
-        setQuickPasteMessage(`已解析到表单，分类 "${parsed.category}" 不在当前范围内 / Category kept unchanged`);
-      }
-    } else {
-      setQuickPasteMessage('已解析到表单 / Parsed into form');
+    if (recognizedFields === 0) {
+      setQuickAddDraft(null);
+      setQuickAddMessage('未识别到可生成卡片的字段 / Nothing parsed');
+      return;
     }
 
-    if (collapseAfterParse && recognizedFields > 0) {
-      setIsQuickPasteOpen(false);
+    const { draft, categoryMessage } = draftFromParsed(parsed, category);
+    setQuickAddDraft(draft);
+    setQuickAddMessage(categoryMessage ?? '已识别为预览卡片，请确认后添加 / Preview ready');
+  };
+
+  const resetQuickAdd = () => {
+    setQuickAddText('');
+    setQuickAddDraft(null);
+    setQuickAddMessage('');
+  };
+
+  const handleQuickAddConfirm = async () => {
+    if (!isDraftReady(quickAddDraft)) {
+      setQuickAddMessage('P/R/J/N 需要完整后才能添加 / P/R/J/N required');
+      return;
     }
-  };
 
-  const handleQuickPasteParse = () => {
-    applyParsedPRJN(true);
-  };
-
-  const handleQuickPasteClear = () => {
-    setQuickPasteText('');
-    setQuickPasteMessage('');
+    try {
+      await db.entries.add({
+        ...quickAddDraft,
+        id: nanoid(),
+        createdAt: Date.now(),
+      });
+      resetQuickAdd();
+      setIsQuickAddOpen(false);
+    } catch (error) {
+      console.error('Quick add failed:', error);
+      setQuickAddMessage('添加失败，请重试 / Add failed');
+    }
   };
 
   const handleEdit = (entry: PRJNEntry) => {
@@ -224,13 +278,11 @@ export default function App() {
     setNote(entry.note ?? '');
     setIsNoteOpen(Boolean(entry.note));
     setEditingEntryId(entry.id);
-    setIsQuickPasteOpen(false);
-    setQuickPasteMessage('正在编辑历史记录 / Editing entry');
+    setIsQuickAddOpen(false);
   };
 
   const handleCancelEdit = () => {
     resetForm();
-    setQuickPasteMessage('');
   };
 
   const handleExport = () => {
@@ -256,6 +308,32 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content) as Partial<PRJNExport>;
+      const importedEntries = Array.isArray(data.entries)
+        ? data.entries.map(normalizeImportedEntry).filter((entry): entry is PRJNEntry => Boolean(entry))
+        : [];
+
+      if (importedEntries.length === 0) {
+        alert('没有识别到可导入的 PRJN 记录');
+        return;
+      }
+
+      await db.entries.bulkPut(importedEntries);
+      alert(`已导入 ${importedEntries.length} 条 PRJN 记录`);
+    } catch (error) {
+      console.error('Import failed:', error);
+      alert('导入失败，请确认 JSON 文件格式正确');
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden font-sans">
       {/* Header */}
@@ -270,77 +348,41 @@ export default function App() {
             4 Questions • 留住经验 • 更新判断 • 指导下一步
           </p>
         </div>
-        <button 
-          onClick={handleExport}
-          className="text-[10px] font-bold px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-2 tracking-widest uppercase"
-        >
-          <Download size={12} />
-          数据导出 / EXPORT
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsQuickAddOpen(true)}
+            className="text-[10px] font-bold px-3 py-2 bg-black text-white rounded-md hover:opacity-90 transition-colors flex items-center gap-2 tracking-widest uppercase"
+          >
+            <Plus size={12} />
+            快速新增 / QUICK ADD
+          </button>
+          <button 
+            onClick={() => importInputRef.current?.click()}
+            className="text-[10px] font-bold px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-2 tracking-widest uppercase"
+          >
+            <Upload size={12} />
+            数据导入 / IMPORT
+          </button>
+          <button 
+            onClick={handleExport}
+            className="text-[10px] font-bold px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors flex items-center gap-2 tracking-widest uppercase"
+          >
+            <Download size={12} />
+            数据导出 / EXPORT
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImport}
+          />
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Pane: Input Form */}
         <section className="w-full md:w-[400px] border-r border-gray-200 bg-white p-8 flex flex-col overflow-y-auto custom-scrollbar">
-          <div className="mb-6 border border-gray-200 rounded-xl bg-gray-50/60 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setIsQuickPasteOpen(!isQuickPasteOpen)}
-              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-white transition-colors"
-            >
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                快速粘贴 PRJN / Quick Paste
-              </span>
-              {isQuickPasteOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-            <AnimatePresence>
-              {isQuickPasteOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 space-y-3">
-                    <p className="text-[10px] font-bold text-gray-400 leading-relaxed">
-                      粘贴后离开输入框会自动解析，点击解析后会折叠回表单 / Auto parses on blur
-                    </p>
-                    <textarea
-                      value={quickPasteText}
-                      onChange={(e) => setQuickPasteText(e.target.value)}
-                      onBlur={() => applyParsedPRJN(false)}
-                      placeholder={'Category: tool\nP: 我原本以为...\nR: 实际发生...\nJ: 我现在判断...\nN: 下一步...\nNote: 补充说明...'}
-                      className="w-full h-28 resize-none bg-white border border-gray-200 rounded-lg p-3 text-xs leading-relaxed outline-none focus:border-black transition-colors"
-                    />
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleQuickPasteParse}
-                          className="px-3 py-2 bg-black text-white rounded-md text-[10px] font-black uppercase tracking-tighter hover:opacity-90 active:scale-[0.98] transition-all"
-                        >
-                          解析并填入 / PARSE
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleQuickPasteClear}
-                          className="px-3 py-2 border border-gray-200 rounded-md text-[10px] font-black uppercase tracking-tighter text-gray-500 hover:bg-white transition-colors"
-                        >
-                          清空 / CLEAR
-                        </button>
-                      </div>
-                      {quickPasteMessage && (
-                        <span className="text-[10px] font-bold text-gray-400 text-right leading-tight">
-                          {quickPasteMessage}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
           <div className="mb-8">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 block">1. 分类 / Select Category</label>
             <div className="grid grid-cols-3 gap-2">
@@ -487,6 +529,131 @@ export default function App() {
           </div>
         </section>
       </main>
+
+      <AnimatePresence>
+        {isQuickAddOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              className="w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 custom-scrollbar"
+            >
+              <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-widest">快速新增 PRJN / Quick Add</h2>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    粘贴结构化文本，先识别成预览卡片，确认后再添加到历史记录。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuickAddOpen(false);
+                    resetQuickAdd();
+                  }}
+                  className="p-2 rounded-md text-gray-400 hover:bg-gray-100 hover:text-black transition-colors"
+                  title="关闭 / Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-5">
+                <div className="space-y-3">
+                  <textarea
+                    value={quickAddText}
+                    onChange={(e) => setQuickAddText(e.target.value)}
+                    placeholder={'Category: tool\nP: 我原本以为...\nR: 实际发生...\nJ: 我现在判断...\nN: 下一步...\nNote: 补充说明...'}
+                    className="w-full h-72 resize-none bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm leading-relaxed outline-none focus:border-black transition-colors"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleQuickAddParse}
+                        className="px-4 py-2 bg-black text-white rounded-md text-[11px] font-black uppercase tracking-tighter hover:opacity-90 active:scale-[0.98] transition-all"
+                      >
+                        完成识别 / PARSE
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetQuickAdd}
+                        className="px-4 py-2 border border-gray-200 rounded-md text-[11px] font-black uppercase tracking-tighter text-gray-500 hover:bg-gray-50 transition-colors"
+                      >
+                        清空 / CLEAR
+                      </button>
+                    </div>
+                  </div>
+                  {quickAddMessage && (
+                    <p className="text-[11px] font-bold text-gray-400 leading-relaxed">
+                      {quickAddMessage}
+                    </p>
+                  )}
+                </div>
+
+                <div className="border border-gray-200 rounded-xl p-5 bg-gray-50">
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      识别预览 / Preview
+                    </h3>
+                    {quickAddDraft && (
+                      <span className="px-2 py-1 bg-white text-gray-600 text-[10px] font-black rounded uppercase tracking-wider border border-gray-200">
+                        {quickAddDraft.category.toUpperCase()} {CATEGORY_MAP[quickAddDraft.category]}
+                      </span>
+                    )}
+                  </div>
+
+                  {quickAddDraft ? (
+                    <div className="space-y-4">
+                      <HistorySection label="Predict ｜ 预期" color="text-blue-500" content={quickAddDraft.predict || '未识别'} />
+                      <HistorySection label="Reality ｜ 实际" color="text-orange-500" content={quickAddDraft.reality || '未识别'} />
+                      <HistorySection label="Judgment ｜ 判断" color="text-purple-500" content={quickAddDraft.judgment || '未识别'} />
+                      <HistorySection label="Next ｜ 行动" color="text-green-500" content={quickAddDraft.next || '未识别'} />
+                      {quickAddDraft.note && (
+                        <div className="pt-3 border-t border-gray-200 italic text-gray-500 text-[11px] leading-relaxed">
+                          <span className="not-italic font-bold mr-1 text-[9px] uppercase tracking-tighter text-gray-400">备注 / Note:</span>
+                          {quickAddDraft.note}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-72 flex items-center justify-center text-center text-gray-300 text-xs font-bold uppercase tracking-widest">
+                      等待识别 / Waiting for parse
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuickAddOpen(false);
+                    resetQuickAdd();
+                  }}
+                  className="px-4 py-2 border border-gray-200 rounded-md text-[11px] font-black uppercase tracking-tighter text-gray-500 hover:bg-gray-50 transition-colors"
+                >
+                  取消 / CANCEL
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickAddConfirm}
+                  disabled={!isDraftReady(quickAddDraft)}
+                  className="px-4 py-2 bg-black text-white rounded-md text-[11px] font-black uppercase tracking-tighter hover:opacity-90 disabled:opacity-30 transition-colors"
+                >
+                  确认添加 / ADD ENTRY
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
