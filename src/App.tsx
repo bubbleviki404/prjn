@@ -7,15 +7,14 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { nanoid } from 'nanoid';
 import { format } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
 import { 
   Plus, 
   ChevronDown, 
   ChevronUp, 
   Download, 
-  Calendar, 
-  ArrowRight,
   ClipboardList,
+  Pencil,
+  X,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -89,6 +88,7 @@ export default function App() {
   const [quickPasteMessage, setQuickPasteMessage] = useState('');
   const [isQuickPasteOpen, setIsQuickPasteOpen] = useState(false);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
@@ -98,6 +98,16 @@ export default function App() {
   );
 
   // Actions
+  const resetForm = () => {
+    setPredict('');
+    setReality('');
+    setJudgment('');
+    setNext('');
+    setNote('');
+    setIsNoteOpen(false);
+    setEditingEntryId(null);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!predict || !reality || !judgment || !next) {
@@ -107,26 +117,31 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      const newEntry: PRJNEntry = {
-        id: nanoid(),
-        category,
-        predict,
-        reality,
-        judgment,
-        next,
-        note: note.trim() || undefined,
-        createdAt: Date.now(),
-      };
+      if (editingEntryId) {
+        await db.entries.update(editingEntryId, {
+          category,
+          predict,
+          reality,
+          judgment,
+          next,
+          note: note.trim() || undefined,
+        });
+      } else {
+        const newEntry: PRJNEntry = {
+          id: nanoid(),
+          category,
+          predict,
+          reality,
+          judgment,
+          next,
+          note: note.trim() || undefined,
+          createdAt: Date.now(),
+        };
 
-      await db.entries.add(newEntry);
-      
-      // Reset Form
-      setPredict('');
-      setReality('');
-      setJudgment('');
-      setNext('');
-      setNote('');
-      setIsNoteOpen(false);
+        await db.entries.add(newEntry);
+      }
+
+      resetForm();
     } catch (error) {
       console.error('Failed to save PRJN:', error);
       alert('保存失败，请重试');
@@ -142,6 +157,9 @@ export default function App() {
     
     try {
       await db.entries.delete(id);
+      if (editingEntryId === id) {
+        resetForm();
+      }
     } catch (error) {
       console.error('Delete failed:', error);
       setDeletingIds(prev => {
@@ -152,9 +170,16 @@ export default function App() {
     }
   };
 
-  const handleQuickPasteParse = () => {
+  const applyParsedPRJN = (collapseAfterParse = false) => {
+    if (!quickPasteText.trim()) return;
+
     const parsed = parsePRJNText(quickPasteText);
     const recognizedFields = Object.values(parsed).filter((value) => value?.trim()).length;
+
+    if (recognizedFields === 0) {
+      setQuickPasteMessage('未识别到可填入字段 / Nothing parsed');
+      return;
+    }
 
     setPredict(parsed.predict ?? '');
     setReality(parsed.reality ?? '');
@@ -168,17 +193,43 @@ export default function App() {
 
       if (isPRJNCategory(normalizedCategory)) {
         setCategory(normalizedCategory);
-        setQuickPasteMessage(recognizedFields > 0 ? '已解析到表单 / Parsed into form' : '未识别到可填入字段 / Nothing parsed');
+        setQuickPasteMessage('已解析到表单 / Parsed into form');
       } else {
         setQuickPasteMessage(`已解析到表单，分类 "${parsed.category}" 不在当前范围内 / Category kept unchanged`);
       }
     } else {
-      setQuickPasteMessage(recognizedFields > 0 ? '已解析到表单 / Parsed into form' : '未识别到可填入字段 / Nothing parsed');
+      setQuickPasteMessage('已解析到表单 / Parsed into form');
     }
+
+    if (collapseAfterParse && recognizedFields > 0) {
+      setIsQuickPasteOpen(false);
+    }
+  };
+
+  const handleQuickPasteParse = () => {
+    applyParsedPRJN(true);
   };
 
   const handleQuickPasteClear = () => {
     setQuickPasteText('');
+    setQuickPasteMessage('');
+  };
+
+  const handleEdit = (entry: PRJNEntry) => {
+    setCategory(entry.category);
+    setPredict(entry.predict);
+    setReality(entry.reality);
+    setJudgment(entry.judgment);
+    setNext(entry.next);
+    setNote(entry.note ?? '');
+    setIsNoteOpen(Boolean(entry.note));
+    setEditingEntryId(entry.id);
+    setIsQuickPasteOpen(false);
+    setQuickPasteMessage('正在编辑历史记录 / Editing entry');
+  };
+
+  const handleCancelEdit = () => {
+    resetForm();
     setQuickPasteMessage('');
   };
 
@@ -251,11 +302,15 @@ export default function App() {
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 space-y-3">
+                    <p className="text-[10px] font-bold text-gray-400 leading-relaxed">
+                      粘贴后离开输入框会自动解析，点击解析后会折叠回表单 / Auto parses on blur
+                    </p>
                     <textarea
                       value={quickPasteText}
                       onChange={(e) => setQuickPasteText(e.target.value)}
+                      onBlur={() => applyParsedPRJN(false)}
                       placeholder={'Category: tool\nP: 我原本以为...\nR: 实际发生...\nJ: 我现在判断...\nN: 下一步...\nNote: 补充说明...'}
-                      className="w-full h-36 resize-none bg-white border border-gray-200 rounded-lg p-3 text-xs leading-relaxed outline-none focus:border-black transition-colors"
+                      className="w-full h-28 resize-none bg-white border border-gray-200 rounded-lg p-3 text-xs leading-relaxed outline-none focus:border-black transition-colors"
                     />
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex gap-2">
@@ -373,12 +428,26 @@ export default function App() {
               </div>
             </div>
 
+            {editingEntryId && (
+              <div className="rounded-lg border border-black bg-gray-50 p-3 text-[10px] font-bold text-gray-500 uppercase tracking-tighter flex items-center justify-between">
+                <span>正在编辑历史记录 / Editing entry</span>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="p-1 rounded hover:bg-white transition-colors"
+                  title="取消编辑 / Cancel edit"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isSaving}
               className="w-full mt-auto bg-black text-white py-4 rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isSaving ? '正在保存 / SAVING...' : '保存复盘 / SAVE ENTRY'}
+              {isSaving ? '正在保存 / SAVING...' : editingEntryId ? '保存修改 / SAVE CHANGES' : '保存复盘 / SAVE ENTRY'}
             </button>
           </form>
         </section>
@@ -398,8 +467,10 @@ export default function App() {
                 <HistoryCard 
                   key={entry.id} 
                   entry={entry} 
+                  onEdit={handleEdit}
                   onDelete={handleDelete} 
                   isDeleting={deletingIds.has(entry.id)} 
+                  isEditing={editingEntryId === entry.id}
                 />
               ))}
             </AnimatePresence>
@@ -431,7 +502,7 @@ function MinimalField({ char, color, focusBorder, children }: { char: string; co
   );
 }
 
-function HistoryCard({ entry, onDelete, isDeleting }: { entry: PRJNEntry; onDelete: (id: string) => void | Promise<void>; isDeleting: boolean; key?: string }) {
+function HistoryCard({ entry, onEdit, onDelete, isDeleting, isEditing }: { entry: PRJNEntry; onEdit: (entry: PRJNEntry) => void; onDelete: (id: string) => void | Promise<void>; isDeleting: boolean; isEditing: boolean; key?: string }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -452,7 +523,8 @@ function HistoryCard({ entry, onDelete, isDeleting }: { entry: PRJNEntry; onDele
       animate={{ opacity: isDeleting ? 0.3 : 1, y: 0, scale: isDeleting ? 0.98 : 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       className={cn(
-        "bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all group relative",
+        "bg-white border rounded-xl p-5 shadow-sm hover:shadow-md transition-all group relative",
+        isEditing ? "border-black ring-2 ring-black/5" : "border-gray-200",
         isDeleting && "pointer-events-none cursor-wait"
       )}
     >
@@ -467,26 +539,40 @@ function HistoryCard({ entry, onDelete, isDeleting }: { entry: PRJNEntry; onDele
           </time>
         </div>
         
-        <button
-          onClick={handleClick}
-          disabled={isDeleting}
-          className={cn(
-            "p-1.5 px-2.5 rounded-md transition-all flex items-center gap-1.5",
-            showConfirm 
-              ? "bg-red-500 text-white scale-105" 
-              : "text-gray-300 hover:text-red-500 hover:bg-red-50",
-            isDeleting && "opacity-50"
-          )}
-          title={showConfirm ? "再次点击确定删除 / Confirm Delete" : "删除这条记录 / Delete Entry"}
-        >
-          {isDeleting ? (
-            <span className="text-[9px] font-black tracking-tighter">正在删除 / DELETING...</span>
-          ) : showConfirm ? (
-            <span className="text-[9px] font-black tracking-tighter">确认删除? / CONFIRM?</span>
-          ) : (
-            <Trash2 size={12} />
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onEdit(entry)}
+            disabled={isDeleting}
+            className={cn(
+              "p-1.5 px-2.5 rounded-md transition-all flex items-center gap-1.5",
+              isEditing ? "bg-black text-white" : "text-gray-300 hover:text-black hover:bg-gray-100",
+              isDeleting && "opacity-50"
+            )}
+            title="编辑这条记录 / Edit Entry"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            onClick={handleClick}
+            disabled={isDeleting}
+            className={cn(
+              "p-1.5 px-2.5 rounded-md transition-all flex items-center gap-1.5",
+              showConfirm 
+                ? "bg-red-500 text-white scale-105" 
+                : "text-gray-300 hover:text-red-500 hover:bg-red-50",
+              isDeleting && "opacity-50"
+            )}
+            title={showConfirm ? "再次点击确定删除 / Confirm Delete" : "删除这条记录 / Delete Entry"}
+          >
+            {isDeleting ? (
+              <span className="text-[9px] font-black tracking-tighter">正在删除 / DELETING...</span>
+            ) : showConfirm ? (
+              <span className="text-[9px] font-black tracking-tighter">确认删除? / CONFIRM?</span>
+            ) : (
+              <Trash2 size={12} />
+            )}
+          </button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
