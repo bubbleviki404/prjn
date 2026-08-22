@@ -1,159 +1,69 @@
-# PRJN Daily Review MVP
+# PRJN
 
-PRJN 是一个轻量复盘分析框架。它用 4 个问题帮助使用者快速留下经验、更新判断，并把复盘转成下一步行动。
+PRJN is a small browser-local reflection tool built around four questions:
 
-> 用 4 个问题，留住经验，更新判断，指导下一步。
+- **Predict** — What did I expect to happen?
+- **Reality** — What actually happened?
+- **Judgment** — What do I think now?
+- **Next** — What will I do next?
 
-这个仓库是基于 PRJN 框架生成的日常记录网站 MVP。当前版本定位为个人自用 demo，重点是轻、快、清楚、能立刻记录，不包含登录、云同步、搜索、AI 总结等复杂功能。
+The goal is to separate expectation, result, updated judgment, and action so a review can stay short and useful.
 
-## PRJN 框架
+## Current MVP
 
-每一条 PRJN 记录由 4 个部分组成：
+PRJN is a static React/Vite MVP for personal use. It currently provides:
 
-- **P / Predict**：我原本以为会怎样
-- **R / Reality**：实际发生了什么
-- **J / Judgment**：我现在的判断是什么
-- **N / Next**：下一步怎么做
+- A single-entry form with optional notes.
+- Six categories: `product`, `tool`, `workflow`, `learning`, `life`, and `growth`.
+- A quick-add parser for `Category`, `P`, `R`, `J`, `N`, and `Note` lines. It accepts either `:` or `：`.
+- A reverse-chronological local history list.
+- Editing and deleting existing entries.
+- JSON export for backup and JSON import for restoring entries. Existing IDs are updated when they match.
+- Resizable input and history panes on desktop; mobile uses a stacked layout.
 
-PRJN 的核心不是写长总结，而是把「原本预期」「真实结果」「判断更新」「下一步行动」分开记录。这样可以避免事后合理化，也更容易看见自己判断模型的变化。
+The MVP intentionally does not include accounts, cloud sync, a server database, search, complex filtering, or AI-generated summaries.
 
-标准格式：
+## Data and privacy boundary
 
-```text
-P｜我原本以为...
-R｜实际发生...
-J｜我现在判断...
-N｜下一步...
-```
+Entries are stored in the current browser's IndexedDB database through Dexie. The app does not send entries to an application server or provide cloud synchronization. Data can be lost when browser storage is cleared, a different browser or device is used, or the site storage is otherwise unavailable; export JSON regularly if the records matter.
 
-## 网站功能
+The app is a static frontend. Its stylesheet references Google Fonts for typography, with system font fallbacks if those fonts cannot be loaded. No application API or analytics integration is configured in this repository.
 
-当前 MVP 提供：
+Imported JSON is parsed in the browser and written to the same local database. Treat exported JSON files as sensitive if they contain personal reflections.
 
-- 单页 PRJN 记录表单
-- 分类字段：product、tool、workflow、learning、life、growth
-- P / R / J / N 四个必填输入区
-- 可选备注 note，默认折叠
-- 快速新增：粘贴结构化 PRJN 文本，识别预览后确认添加
-- 本地历史记录列表，按创建时间倒序排列
-- 弹框编辑历史记录
-- 删除单条记录
-- JSON 数据导出
-- JSON 数据导入
-- 桌面端左右分栏拖拽调整宽度
+## Run locally
 
-当前 MVP 不提供：
-
-- 登录注册
-- 多设备云同步
-- 服务端数据库
-- 搜索和复杂筛选
-- AI 自动总结
-
-## 如何使用
-
-### 手动记录
-
-1. 选择一条记录的分类。
-2. 填写 P / R / J / N 四个输入区。
-3. 如有必要，展开备注并补充背景。
-4. 点击「保存复盘」。
-5. 在右侧历史列表回看记录。
-
-### 快速新增
-
-点击顶部「快速新增」，粘贴如下结构化文本：
-
-```text
-Category: tool
-P: 我原本以为...
-R: 实际发生...
-J: 我现在判断...
-N: 下一步...
-Note: 补充说明...
-```
-
-也支持全角冒号：
-
-```text
-Category：tool
-P：我原本以为...
-R：实际发生...
-J：我现在判断...
-N：下一步...
-Note：补充说明...
-```
-
-点击「完成识别」后，系统会生成可编辑草稿。你可以像普通新增一样继续修改分类、P / R / J / N 和备注；确认无误后点击「确认添加」，记录才会写入本地历史。
-
-### 编辑历史
-
-点击历史卡片右上角的编辑按钮，会打开编辑弹框。修改后点击「更新」会更新原记录；点击「取消」则关闭弹框，不会保存修改。
-
-### 分栏调整
-
-桌面端可以拖拽输入区和历史区中间的竖向分隔条，按当前工作需要调整两侧宽度。移动端会保持上下排列。
-
-### 导入与导出
-
-点击「数据导出」可以把所有记录导出为 JSON 文件备份。
-
-点击「数据导入」可以导入之前导出的 JSON 文件。导入时会尽量保留原记录 id 和创建时间；如果 id 已存在，会更新同一条记录。
-
-数据默认保存在当前浏览器的 IndexedDB 中。换浏览器、清理浏览器数据或更换设备后，本地数据不会自动同步；请定期使用 JSON 导出备份。
-
-## 本地运行
-
-需要先安装 Node.js。
+Requires Node.js and npm.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-默认开发地址：
+The default development URL is [http://localhost:3000](http://localhost:3000).
 
-```text
-http://localhost:3000
-```
-
-## 构建
+## Build and verify
 
 ```bash
+npm run lint
 npm run build
 ```
 
-构建产物会生成在 `dist/` 目录中。
+The production output is written to `dist/`.
 
-## GitHub Pages 部署说明
+## GitHub Pages
 
-这个项目是 Vite + React 静态前端，适合部署到 GitHub Pages。
+The repository includes a GitHub Actions workflow at `.github/workflows/deploy.yml`. It builds the static site on pushes to `main` and deploys the `dist/` artifact to GitHub Pages. The workflow uses the standard GitHub Pages deployment permissions and does not require application secrets.
 
-如果部署到 GitHub 用户站点，例如：
-
-```text
-https://your-name.github.io/
-```
-
-通常不需要额外设置 Vite `base`。
-
-如果部署到 GitHub 项目站点，例如：
+The Vite base path is configured as `/prjn/`, matching the project site URL:
 
 ```text
-https://your-name.github.io/prjn/
+https://<github-user>.github.io/prjn/
 ```
 
-需要在 `vite.config.ts` 中设置：
+## Export format
 
-```ts
-base: '/prjn/',
-```
-
-其中 `prjn` 应替换为实际 GitHub 仓库名。
-
-## 数据格式
-
-导出的 JSON 文件包含：
+An export file has this shape:
 
 ```ts
 {
@@ -163,31 +73,10 @@ base: '/prjn/',
 }
 ```
 
-单条记录结构：
+Each entry contains `id`, `category`, `predict`, `reality`, `judgment`, `next`, optional `note`, and `createdAt`.
 
-```ts
-{
-  id: string;
-  category: 'product' | 'tool' | 'workflow' | 'learning' | 'life' | 'growth';
-  predict: string;
-  reality: string;
-  judgment: string;
-  next: string;
-  note?: string;
-  createdAt: number;
-}
-```
+## Status and limits
 
-## 后续迭代方向
+This is a small public MVP, not a hosted production service. It has no authentication, server-side backup, migration system, or cross-device synchronization. The current implementation is intentionally narrow so the local reflection workflow remains easy to inspect and run.
 
-可能的后续版本可以考虑：
-
-- 搜索与筛选
-- 标签系统
-- Markdown 导出
-- 多设备同步
-- 账号系统
-- AI 辅助总结
-- 移动端 App 或 PWA
-
-当前阶段建议继续保持 MVP 的轻量性，先用真实日常记录验证 PRJN 框架是否足够顺手。
+This repository currently has no `LICENSE` file. Please do not assume that the code or its assets are licensed for reuse.
